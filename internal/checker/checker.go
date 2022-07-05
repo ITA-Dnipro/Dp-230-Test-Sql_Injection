@@ -77,7 +77,7 @@ func (c *checker) Check(link string) error {
 			scan.Text(),
 		}
 
-		forms, countBefore, err := c.fetchForm(link)
+		forms, countBefore, err := c.fetchForms(link)
 
 		if err != nil {
 			return err
@@ -105,7 +105,8 @@ func (c *checker) countErrs(bytes []byte) int {
 	return counter
 }
 
-func (c *checker) fetchForm(link string) ([]htmlForm.HtmlForm, int, error) {
+//fetchForms fetches all forms which are exists in given link.
+func (c *checker) fetchForms(link string) ([]*htmlForm.HtmlForm, int, error) {
 	resp, err := c.client.R().Get(link)
 	if err != nil {
 		return nil, 0, fmt.Errorf("error fetching url %q: %v", link, err)
@@ -121,24 +122,32 @@ func (c *checker) fetchForm(link string) ([]htmlForm.HtmlForm, int, error) {
 	if len(forms) == 0 {
 		return nil, 0, fmt.Errorf("no forms found at %q", link)
 	}
+
+	for _, f := range forms {
+		err := f.ParseURL(link)
+		if err != nil {
+			return forms, 0, err
+		}
+	}
+
 	countBefore := c.countErrs(resp.Body())
 
 	return forms, countBefore, nil
 }
 
 // submitForm submitting htmlForm putting each payload. Matches request body with possible errors.
-func (c *checker) submitForm(link, payload string, countBefore int, forms []htmlForm.HtmlForm, setValues func(url.Values, string), wg *sync.WaitGroup) {
+func (c *checker) submitForm(link, payload string, countBefore int, forms []*htmlForm.HtmlForm, setValues func(url.Values, string), wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for _, f := range forms {
-		// allow caller to fill out the htmlForm
+		// filling the form empty attributes with payloads
 		if setValues != nil {
 			setValues(f.Values, payload)
 		}
 
 		resp, err := c.client.R().
 			SetFormDataFromValues(f.Values).
-			Post(link)
+			Post(f.GetURL())
 		if err != nil {
 			log.Printf("error posting htmlForm: %v", err)
 		}
@@ -154,11 +163,12 @@ func (c *checker) submitForm(link, payload string, countBefore int, forms []html
 	}
 }
 
-func setValues(values url.Values, pl string) {
+// setValues sets given payload whether field is empty.
+func setValues(values url.Values, payload string) {
 	for k, v := range values {
 		for _, i := range v {
 			if i == "" {
-				values.Set(k, pl)
+				values.Set(k, payload)
 			}
 		}
 	}
