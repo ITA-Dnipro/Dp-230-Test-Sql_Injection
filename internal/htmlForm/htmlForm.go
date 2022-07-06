@@ -77,8 +77,8 @@ func ParseForms(node *html.Node) (forms []*HtmlForm) {
 			})
 		}
 		forms = append(forms, form)
+		fmt.Println(form)
 	})
-
 	return forms
 }
 

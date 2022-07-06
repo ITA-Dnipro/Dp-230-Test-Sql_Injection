@@ -71,26 +71,22 @@ func (c *checker) Check(link string) error {
 		return fmt.Errorf("sorry could not parse the list ->  %v\n", c.payload)
 	}
 	defer f.Close()
+
+	forms, countBefore, err := c.fetchForms(link)
+	fmt.Println("Forms received...")
+	if err != nil {
+		return err
+	}
+	var wg sync.WaitGroup
+
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
-		payloads := []string{
-			scan.Text(),
-		}
-
-		forms, countBefore, err := c.fetchForms(link)
-
-		if err != nil {
-			return err
-		}
-
-		var wg sync.WaitGroup
-
-		for _, payload := range payloads {
-			wg.Add(1)
-			go c.submitForm(link, payload, countBefore, forms, setValues, &wg)
-		}
-		wg.Wait()
+		payload := scan.Text()
+		wg.Add(1)
+		go c.submitForm(link, payload, countBefore, forms, setValues, &wg)
 	}
+	wg.Wait()
+	fmt.Println("Finished!")
 	return nil
 }
 

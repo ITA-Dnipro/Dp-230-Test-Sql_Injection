@@ -18,7 +18,7 @@ var (
 func main() {
 	client := resty.New()
 	checker := checker.New("../../asset/payload.txt", errors, client)
-	if err := checker.Start().Check(url); err != nil {
+	if err := checker.Start().Check("https://szsh21.klasna.com/"); err != nil {
 		fmt.Println(err)
 	}
 }
