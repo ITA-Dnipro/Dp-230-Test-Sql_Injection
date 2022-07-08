@@ -3,10 +3,10 @@ package broker
 import (
 	"context"
 	"encoding/json"
-	"github.com/ITA-Dnipro/Dp-230_Test_Sql_Injection/config"
 	"log"
 	"os"
 
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/config"
 	"github.com/segmentio/kafka-go"
 )
 

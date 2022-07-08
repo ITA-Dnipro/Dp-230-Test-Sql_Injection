@@ -3,11 +3,7 @@ package checker
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"fmt"
-	"github.com/ITA-Dnipro/Dp-230_Test_Sql_Injection/config"
-	"github.com/ITA-Dnipro/Dp-230_Test_Sql_Injection/internal/broker"
-	"golang.org/x/net/html"
 	"log"
 	"net/url"
 	"os"
@@ -15,8 +11,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ITA-Dnipro/Dp-230_Test_Sql_Injection/internal/form"
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/config"
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/broker"
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/form"
 	"github.com/go-resty/resty/v2"
+
+	"golang.org/x/exp/slices"
+	"golang.org/x/net/html"
 )
 
 // Checker defines error based sqli checker for bWAPP.
@@ -55,26 +56,27 @@ func New(errors []string) Checker {
 // Start firstly gets valid cookies for bwapp.
 func (c *checker) Start() {
 	c.authLocal()
-	ctx := context.Background()
+	//ctx := context.Background()
 	//TODO: add kafka worker. Here we'll get a URL.
 
-	for {
-		// the `ReadMessage` method blocks until we receive the next event
-		//msg, err := c.consumer.Reader.ReadMessage(ctx)
-		//if err != nil {
-		//	log.Fatalf("could not read message: %v ", err)
-		//}
-		message, err := c.consumer.FetchMessage(ctx)
-		if err != nil {
-			log.Printf("Error fetching message: %v\n", err)
-		}
-		for _, url := range message.Value.URLs {
-			err := c.ErrorBasedCheck(url)
-			if err != nil {
-				log.Printf("Error-based check error:%v\n", err)
-			}
-		}
-	}
+	//for {
+	//	// the `ReadMessage` method blocks until we receive the next event
+	//	//msg, err := c.consumer.Reader.ReadMessage(ctx)
+	//	//if err != nil {
+	//	//	log.Fatalf("could not read message: %v ", err)
+	//	//}
+	//	message, err := c.consumer.FetchMessage(ctx)
+	//	if err != nil {
+	//		log.Printf("Error fetching message: %v\n", err)
+	//	}
+	//	for _, url := range message.Value.URLs {
+	//		err := c.ErrorBasedCheck(url)
+	//		if err != nil {
+	//			log.Printf("Error-based check error:%v\n", err)
+	//		}
+	//	}
+	//}
+	fmt.Println(c.ErrorBasedCheck("http://localhost/sqli_16.php"))
 }
 
 // ErrorBasedCheck firstly reads payloads from the file, then creates regexp for errors, after gets site body
@@ -88,7 +90,7 @@ func (c *checker) ErrorBasedCheck(link string) error {
 	defer f.Close()
 
 	forms, countBefore, err := c.fetchForms(link)
-	fmt.Println("Forms received...")
+	fmt.Printf("Forms received... Len: %d\n", len(forms))
 	if err != nil {
 		return err
 	}
@@ -97,6 +99,16 @@ func (c *checker) ErrorBasedCheck(link string) error {
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
 		payload := scan.Text()
+		tmp := slices.Clone(forms)
+		for _, v := range tmp {
+			for k, i := range v.Values {
+				for _, p := range i {
+					if p == "" {
+						v.Values.Set(k, payload)
+					}
+				}
+			}
+		}
 		wg.Add(1)
 		go c.submitForm(link, payload, countBefore, forms, setValues, &wg)
 	}
@@ -117,28 +129,21 @@ func (c *checker) countErrs(bytes []byte) int {
 }
 
 //fetchForms fetches all forms which are exists in given link.
-func (c *checker) fetchForms(link string) ([]*form.HtmlForm, int, error) {
+func (c *checker) fetchForms(link string) ([]form.HtmlForm, int, error) {
 	resp, err := c.client.R().Get(link)
 	if err != nil {
 		return nil, 0, fmt.Errorf("error fetching url %q: %w", link, err)
 	}
-
+	//b := bytes.NewReader(resp.Body())
 	root, err := html.Parse(bytes.NewReader(resp.Body()))
 	if err != nil {
 		return nil, 0, fmt.Errorf("error parsing response: %w", err)
 	}
 
-	forms := form.ParseForms(root)
+	forms := form.ParseForms(root, link)
 
 	if len(forms) == 0 {
 		return nil, 0, fmt.Errorf("no forms found at %q", link)
-	}
-
-	for _, f := range forms {
-		err := f.ParseURL(link)
-		if err != nil {
-			log.Printf("Error parsing URL: %v", err)
-		}
 	}
 
 	countBefore := c.countErrs(resp.Body())
@@ -147,18 +152,25 @@ func (c *checker) fetchForms(link string) ([]*form.HtmlForm, int, error) {
 }
 
 // submitForm submitting form putting each payload. Matches request body with possible errors.
-func (c *checker) submitForm(link, payload string, countBefore int, forms []*form.HtmlForm, setValues func(url.Values, string), wg *sync.WaitGroup) {
+func (c *checker) submitForm(link, payload string, countBefore int, forms []form.HtmlForm, setValues func(url.Values, string), wg *sync.WaitGroup) {
 	defer wg.Done()
+	fmt.Printf("VALUES: %v\n", forms[0].Values)
 
-	for _, f := range forms {
-		// filling the form empty attributes with payloads
+	tmp := slices.Clone(forms)
+	fmt.Printf("TMP len: %v", len(tmp))
+
+	for _, f := range tmp {
+		//filling the form empty attributes with payloads
 		if setValues != nil {
 			setValues(f.Values, payload)
 		}
 
+		fmt.Printf("Values after:%v\n", f.Values)
+		fmt.Printf("PAYLOAD:%v", payload)
+
 		resp, err := c.client.R().
 			SetFormDataFromValues(f.Values).
-			Post(f.GetURL())
+			Post(f.URL)
 		if err != nil {
 			log.Printf("error posting form: %v", err)
 		}

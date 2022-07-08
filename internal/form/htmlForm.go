@@ -2,10 +2,12 @@ package form
 
 import (
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
-	"golang.org/x/net/html"
+	"log"
 	"net/url"
 	"strings"
+
+	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html"
 )
 
 // HtmlForm represents needed elements of an HTML Form.
@@ -21,20 +23,26 @@ type HtmlForm struct {
 // ParseForms parses and returns all form elements beneath node.  Form values
 // include all input, select with the first possible value and submit buttons. The values of radio
 // and checkbox inputs are included only if they are checked.
-func ParseForms(node *html.Node) (forms []*HtmlForm) {
+func ParseForms(node *html.Node, link string) (forms []HtmlForm) {
 	if node == nil {
 		return nil
 	}
 
 	doc := goquery.NewDocumentFromNode(node)
+
 	//doc, err := goquery.NewDocumentFromReader(r)
 	//if err != nil {
 	//	log.Println(err)
 	//	return nil
 	//}
 	doc.Find("form").Each(func(_ int, s *goquery.Selection) {
-		form := &HtmlForm{Values: url.Values{}}
+		form := HtmlForm{Values: url.Values{}}
 		form.Action, _ = s.Attr("action")
+		err := form.ParseURL(link)
+		if err != nil {
+			log.Printf("Error parsing URL: %v", err)
+		}
+		fmt.Println(form.URL)
 
 		_, ok := s.Find("input").Attr("type")
 		if ok {
@@ -95,15 +103,7 @@ func (f *HtmlForm) ParseURL(link string) error {
 		return fmt.Errorf("error parsing page URL %q: %w", link, err)
 	}
 	actionURL = pageUrl.ResolveReference(actionURL)
-	f.setURL(actionURL)
+	f.URL = pageUrl.String()
 
 	return nil
-}
-
-func (f *HtmlForm) GetURL() string {
-	return f.URL
-}
-
-func (f *HtmlForm) setURL(url *url.URL) {
-	f.URL = url.String()
 }

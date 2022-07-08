@@ -19,7 +19,7 @@ type KafkaConfig struct {
 }
 
 type CheckerConfig struct {
-	ErrBasedPayload  string `env:"ERROR_BASED_PAYLOAD_PATH, default=../../asset/errorbased.txt"`
+	ErrBasedPayload  string `env:"ERROR_BASED_PAYLOAD_PATH, default=./asset/errorbased.txt"`
 	TimeBasedPayload string `env:"TIME_BASED_PAYLOAD_PATH, default=./asset/timebased.txt"`
 }
 

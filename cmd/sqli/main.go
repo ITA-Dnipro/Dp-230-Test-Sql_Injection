@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"github.com/ITA-Dnipro/Dp-230_Test_Sql_Injection/internal/broker"
-	"github.com/ITA-Dnipro/Dp-230_Test_Sql_Injection/internal/checker"
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/broker"
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/checker"
 	"log"
 )
 
@@ -18,7 +18,7 @@ var (
 
 func main() {
 	c := checker.New(errors)
-	fakeProducer()
+	//fakeProducer()
 	c.Start()
 }
 
