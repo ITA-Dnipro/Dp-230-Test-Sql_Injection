@@ -1,10 +1,12 @@
+// Package main creates and starts a new checker. Now it has a fakeProducer function, for testing.
 package main
 
 import (
 	"context"
+	"log"
+
 	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/broker"
 	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/checker"
-	"log"
 )
 
 var (
@@ -13,12 +15,11 @@ var (
 		"MySQL",
 		"syntax",
 	}
-	url = "http://localhost/sqli_16.php"
 )
 
 func main() {
 	c := checker.New(errors)
-	//fakeProducer()
+	fakeProducer()
 	c.Start()
 }
 

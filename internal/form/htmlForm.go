@@ -1,13 +1,14 @@
+// Package form provides methods for parsing all appropriate forms by the given link.
 package form
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/url"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
-	"golang.org/x/net/html"
 )
 
 // HtmlForm represents needed elements of an HTML Form.
@@ -17,32 +18,25 @@ type HtmlForm struct {
 	// URL is the complete url where form will be posted
 	URL string
 	// Values contains form values to be submitted
-	Values url.Values
+	Values map[string]string
 }
 
-// ParseForms parses and returns all form elements beneath node.  Form values
+// ParseForms parses and returns all form elements beneath given io.Reader. Form values
 // include all input, select with the first possible value and submit buttons. The values of radio
 // and checkbox inputs are included only if they are checked.
-func ParseForms(node *html.Node, link string) (forms []HtmlForm) {
-	if node == nil {
+func ParseForms(r io.Reader, link string) (forms []HtmlForm) {
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		log.Println(err)
 		return nil
 	}
-
-	doc := goquery.NewDocumentFromNode(node)
-
-	//doc, err := goquery.NewDocumentFromReader(r)
-	//if err != nil {
-	//	log.Println(err)
-	//	return nil
-	//}
 	doc.Find("form").Each(func(_ int, s *goquery.Selection) {
-		form := HtmlForm{Values: url.Values{}}
+		form := HtmlForm{Values: make(map[string]string)}
 		form.Action, _ = s.Attr("action")
-		err := form.ParseURL(link)
+		err := form.parseURL(link)
 		if err != nil {
 			log.Printf("Error parsing URL: %v", err)
 		}
-		fmt.Println(form.URL)
 
 		_, ok := s.Find("input").Attr("type")
 		if ok {
@@ -60,7 +54,7 @@ func ParseForms(node *html.Node, link string) (forms []HtmlForm) {
 				}
 
 				value, _ := s.Attr("value")
-				form.Values.Add(name, value)
+				form.Values[name] = value
 			})
 			s.Find("select").Each(func(_ int, s *goquery.Selection) {
 				name, _ := s.Attr("name")
@@ -69,7 +63,7 @@ func ParseForms(node *html.Node, link string) (forms []HtmlForm) {
 				}
 
 				value, _ := s.Find("option").First().Attr("value")
-				form.Values.Add(name, value)
+				form.Values[name] = value
 			})
 			s.Find("button").Each(func(_ int, s *goquery.Selection) {
 				name, _ := s.Attr("name")
@@ -84,16 +78,16 @@ func ParseForms(node *html.Node, link string) (forms []HtmlForm) {
 				}
 
 				value, _ := s.Attr("value")
-				form.Values.Add(name, value)
+				form.Values[name] = value
 			})
 			forms = append(forms, form)
-			fmt.Println(form)
 		}
 	})
 	return forms
 }
 
-func (f *HtmlForm) ParseURL(link string) error {
+//parseURL parses form's action url to the site's domain name.
+func (f *HtmlForm) parseURL(link string) error {
 	actionURL, err := url.Parse(f.Action)
 	if err != nil {
 		return fmt.Errorf("error parsing form action URL %q: %w", f.Action, err)

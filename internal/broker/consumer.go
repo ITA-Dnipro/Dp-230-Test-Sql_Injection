@@ -1,3 +1,4 @@
+// Package broker contains of Kafka consumer and Kafka producer(which is for the testing purposes).
 package broker
 
 import (
@@ -10,10 +11,12 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
+// Consumer has kafka reader itself.
 type Consumer struct {
 	Reader *kafka.Reader
 }
 
+// New returns new Kafka consumer.
 func New(conf config.Config) *Consumer {
 	l := log.New(os.Stdout, "kafka reader: ", 0)
 	r := kafka.NewReader(kafka.ReaderConfig{
@@ -30,24 +33,23 @@ func New(conf config.Config) *Consumer {
 	return c
 }
 
-func (cons *Consumer) FetchMessage(ctx context.Context) (*Message, error) {
-	message := &Message{}
+// FetchMessage reads messages from Kafka wrapping them into strut.
+func (c *Consumer) FetchMessage(ctx context.Context) (Message, error) {
+	message := Message{}
 
-	msg, err := cons.Reader.FetchMessage(ctx)
+	msg, err := c.Reader.ReadMessage(ctx)
 	if err != nil {
 		return message, err
 	}
 
-	task := &Task{}
-	err = json.Unmarshal(msg.Value, task)
+	task := Task{}
+	err = json.Unmarshal(msg.Value, &task)
 	if err != nil {
 		return message, err
 	}
 	message.Key = string(msg.Key)
 	message.Value = task
 	message.Time = msg.Time
-
-	log.Println("Read from Kafka. Task ID:", message.Value.ID)
 
 	return message, nil
 }
