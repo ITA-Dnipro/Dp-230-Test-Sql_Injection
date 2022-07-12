@@ -1,9 +1,12 @@
+// Package main creates and starts a new checker. Now it has a fakeProducer function, for testing.
 package main
 
 import (
-	"fmt"
-	"github.com/ITA-Dnipro/Dp-230_Test_Sql_Injection/internal/checker"
-	"github.com/go-resty/resty/v2"
+	"context"
+	"log"
+
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/broker"
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/checker"
 )
 
 var (
@@ -12,13 +15,21 @@ var (
 		"MySQL",
 		"syntax",
 	}
-	url = "http://localhost/sqli_16.php"
 )
 
 func main() {
-	client := resty.New()
-	checker := checker.New("../../asset/payload.txt", errors, client)
-	if err := checker.Start().Check("https://szsh21.klasna.com/"); err != nil {
-		fmt.Println(err)
+	c := checker.New(errors)
+	fakeProducer()
+	c.Start()
+}
+
+//fakeProducer just for testing msg publishing
+func fakeProducer() {
+	ctx := context.Background()
+	b := broker.NewProducer("localhost:9092", "sqli-check")
+	m := broker.NewMessageProduce("1313", []string{"http://localhost/sqli_16.php", "https://school39.klasna.com/"})
+	err := b.PublicMessage(ctx, m)
+	if err != nil {
+		log.Println(err)
 	}
 }
