@@ -96,8 +96,7 @@ func (f *HtmlForm) parseURL(link string) error {
 	if err != nil {
 		return fmt.Errorf("error parsing page URL %q: %w", link, err)
 	}
-	actionURL = pageUrl.ResolveReference(actionURL)
-	f.URL = pageUrl.String()
+	f.URL = pageUrl.ResolveReference(actionURL).String()
 
 	return nil
 }

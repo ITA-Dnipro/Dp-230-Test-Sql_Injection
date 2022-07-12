@@ -10,8 +10,9 @@ import (
 
 // Config takes config parameters from environment, or uses default.
 type Config struct {
-	Kafka   *KafkaConfig
-	Checker *CheckerConfig
+	Kafka      *KafkaConfig
+	Checker    *CheckerConfig
+	GRPCConfig *GRPCConfig
 }
 
 // KafkaConfig include parameters for Kafka.
@@ -25,6 +26,10 @@ type KafkaConfig struct {
 type CheckerConfig struct {
 	ErrBasedPayload  string `env:"ERROR_BASED_PAYLOAD_PATH, default=./asset/errorbased.txt"`
 	TimeBasedPayload string `env:"TIME_BASED_PAYLOAD_PATH, default=./asset/timebased.txt"`
+}
+
+type GRPCConfig struct {
+	ResultCollectorAddress string `env:"RESULT_COLLECTOR_PORT, default=localhost:50001"`
 }
 
 // New returns new config.

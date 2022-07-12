@@ -6,11 +6,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/result"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"log"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/config"
 	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/broker"
@@ -21,7 +25,7 @@ import (
 // Checker defines sql-injection checker methods.
 type Checker interface {
 	Start()
-	ErrorBasedCheck(link string) error
+	ErrorBasedCheck(link string) ([]string, error)
 }
 
 // checker defines sql-injection checker.
@@ -64,24 +68,65 @@ func (c *checker) Start() {
 		if err != nil {
 			log.Printf("Error fetching message: %v\n", err)
 		}
-		for _, url := range message.Value.URLs {
-			err := c.ErrorBasedCheck(url)
-			if err != nil {
-				log.Printf("Error-based check error:%v\n", err)
-			}
+		result := c.processMessage(message)
+		result.Result = deleteEmpty(result.Result)
+		if len(result.Result) == 0 {
+			result.Result = append(result.Result, "SQLi-check: No vulnerabilities found.")
 		}
-		// set it to nil for stop processing previous result while no messages from Kafka.
+		err = c.sendResult(result)
+		if err != nil {
+			log.Println(err)
+		} else {
+			log.Printf("Results have been successfully sent to Result Collector.")
+		}
+
 	}
+}
+
+// processMessage starts checking given list of url, appending results received.
+func (c *checker) processMessage(m broker.Message) *result.Result {
+	results := make([]string, 0)
+	totalResult := result.Result{TaskID: m.Value.ID, Result: make([]string, 0)}
+
+	for _, url := range m.Value.URLs {
+		res, err := c.ErrorBasedCheck(url)
+		if err != nil {
+			log.Printf("Error-based check:%v\n", err)
+		}
+		results = append(results, res...)
+	}
+	totalResult.Result = append(totalResult.Result, results...)
+	return &totalResult
+}
+
+// sendResult sends given results via gRPC.
+func (c *checker) sendResult(r *result.Result) error {
+	conn, err := grpc.Dial(c.config.GRPCConfig.ResultCollectorAddress, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	if err != nil {
+		return fmt.Errorf("Cannot connect to gRPC server: %w\n", err)
+	}
+	defer conn.Close()
+	client := result.NewCheckerClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	_, err = client.SendResult(ctx, &result.ResultRequest{ResultData: r})
+	if err != nil {
+		return fmt.Errorf("Error sending result %v\n", err)
+	}
+
+	return nil
 }
 
 // ErrorBasedCheck firstly reads payloads from the file, then creates regexp for errors, after gets site body
 // checking it on possible inclusions of error keywords, finally posts form on site with injectable parameters.
 // Having this done matches response body with possible error keywords.
-func (c *checker) ErrorBasedCheck(link string) error {
+func (c *checker) ErrorBasedCheck(link string) ([]string, error) {
+	results := make([]string, 0)
 	// reading file with payloads with path from config.
 	f, err := os.Open(c.config.Checker.ErrBasedPayload)
 	if err != nil {
-		return fmt.Errorf("sorry could not parse the list ->  %v\n", c.config.Checker.ErrBasedPayload)
+		return results, fmt.Errorf("sorry could not parse the list ->  %v\n", c.config.Checker.ErrBasedPayload)
 	}
 	defer f.Close()
 
@@ -89,7 +134,7 @@ func (c *checker) ErrorBasedCheck(link string) error {
 	forms, countBefore, err := c.fetchForms(link)
 	log.Printf("Number of forms received: %d\n", len(forms))
 	if err != nil {
-		return err
+		return results, err
 	}
 	var wg sync.WaitGroup
 
@@ -97,11 +142,14 @@ func (c *checker) ErrorBasedCheck(link string) error {
 	for scan.Scan() {
 		payload := scan.Text()
 		wg.Add(1)
-		go c.submitForm(link, payload, countBefore, forms, &wg)
+		go func() {
+			res := c.submitForm(link, payload, countBefore, forms, &wg)
+			results = append(results, res...)
+		}()
 	}
 	wg.Wait()
 	fmt.Println("Finished!")
-	return nil
+	return results, nil
 }
 
 // countErrs counts inclusions of errors from checker error-list if they are existed.
@@ -135,8 +183,9 @@ func (c *checker) fetchForms(link string) ([]form.HtmlForm, int, error) {
 }
 
 // submitForm submitting form putting each payload. Matches request body with possible errors.
-func (c *checker) submitForm(link, payload string, countBefore int, forms []form.HtmlForm, wg *sync.WaitGroup) {
+func (c *checker) submitForm(link, payload string, countBefore int, forms []form.HtmlForm, wg *sync.WaitGroup) []string {
 	defer wg.Done()
+	results := make([]string, 0)
 
 	for _, f := range forms {
 		formValues := copyMap(f.Values)
@@ -153,11 +202,12 @@ func (c *checker) submitForm(link, payload string, countBefore int, forms []form
 		body := string(resp.Body())
 		for i, re := range c.errRegexes {
 			if re.MatchString(body) && countBefore != countAfter {
-				fmt.Printf("FOUND VULNARABILITY IN [%s] TO PAYLOAD [%s] IN URL [%s]\n", c.errors[i], payload, link)
+				results = append(results, fmt.Sprintf("FOUND VULNARABILITY IN [%s] TO PAYLOAD [%s] IN URL [%s]\n", c.errors[i], payload, link))
 				break
 			}
 		}
 	}
+	return results
 }
 
 // authLocal is the authentication in case we have bWAPP-site started locally.
@@ -173,23 +223,4 @@ func (c *checker) authLocal() {
 	if err != nil {
 		log.Printf("Could'n get cookies for bWAPP:%v\n", err)
 	}
-}
-
-// setValues assigns the payload to an empty form's attribute.
-func setValues(v map[string]string, payload string) {
-	for k, val := range v {
-		if val == "" {
-			v[k] = payload
-		}
-	}
-}
-
-// copyMap copies values of the entire map into the new one.
-func copyMap(m map[string]string) map[string]string {
-	m2 := make(map[string]string, len(m))
-	for k, v := range m {
-		m2[k] = v
-	}
-
-	return m2
 }
