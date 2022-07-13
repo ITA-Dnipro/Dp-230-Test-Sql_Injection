@@ -4,10 +4,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/result"
-	"google.golang.org/grpc"
 	"log"
 	"net"
+
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/result"
+	"google.golang.org/grpc"
 )
 
 type gRPCServer struct {
@@ -31,7 +32,7 @@ func main() {
 
 func (s *gRPCServer) SendResult(ctx context.Context, request *result.ResultRequest) (*result.ResultResponse, error) {
 	for _, v := range request.ResultData.Result {
-		fmt.Println(v)
+		log.Println(v)
 	}
 
 	return &result.ResultResponse{Response: fmt.Sprintf("Got results for task %s\n", request.ResultData.TaskID)}, nil

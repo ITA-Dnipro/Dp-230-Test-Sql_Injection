@@ -6,9 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/result"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"log"
 	"os"
 	"regexp"
@@ -19,7 +16,11 @@ import (
 	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/config"
 	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/broker"
 	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/form"
+	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/result"
+
 	"github.com/go-resty/resty/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Checker defines sql-injection checker methods.
@@ -136,18 +137,27 @@ func (c *checker) ErrorBasedCheck(link string) ([]string, error) {
 	if err != nil {
 		return results, err
 	}
+
 	var wg sync.WaitGroup
+	res := make(chan []string)
 
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
 		payload := scan.Text()
 		wg.Add(1)
 		go func() {
-			res := c.submitForm(link, payload, countBefore, forms, &wg)
-			results = append(results, res...)
+			res <- c.submitForm(link, payload, countBefore, forms)
 		}()
 	}
+	go func() {
+		for r := range res {
+			results = append(results, r...)
+			wg.Done()
+		}
+	}()
+
 	wg.Wait()
+
 	fmt.Println("Finished!")
 	return results, nil
 }
@@ -183,8 +193,7 @@ func (c *checker) fetchForms(link string) ([]form.HtmlForm, int, error) {
 }
 
 // submitForm submitting form putting each payload. Matches request body with possible errors.
-func (c *checker) submitForm(link, payload string, countBefore int, forms []form.HtmlForm, wg *sync.WaitGroup) []string {
-	defer wg.Done()
+func (c *checker) submitForm(link, payload string, countBefore int, forms []form.HtmlForm) []string {
 	results := make([]string, 0)
 
 	for _, f := range forms {
