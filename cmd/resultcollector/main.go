@@ -1,4 +1,4 @@
-// Package main just for testing grpc connection. Should be moved to a separate microservice.
+// Package main just for testing grpcclient connection. Should be moved to a separate microservice.
 package main
 
 import (

@@ -19,8 +19,6 @@ import (
 	"github.com/ITA-Dnipro/Dp-230-Test-Sql_Injection/internal/result"
 
 	"github.com/go-resty/resty/v2"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Checker defines sql-injection checker methods.
@@ -33,21 +31,24 @@ type Checker interface {
 type checker struct {
 	errors     []string
 	errRegexes []*regexp.Regexp
-	client     *resty.Client
+	httpClient *resty.Client
+	grpcClient result.CheckerClient
 	config     config.Config
 	consumer   *broker.Consumer
 }
 
 // New creates a new instance of checker.
 func New(errors []string) Checker {
-	client := resty.New()
+	httpClient := resty.New()
 	conf := config.New()
 	reader := broker.New(conf)
+	grpcClient := result.New(conf)
 	c := &checker{
-		errors:   errors,
-		client:   client,
-		config:   conf,
-		consumer: reader,
+		errors:     errors,
+		httpClient: httpClient,
+		config:     conf,
+		consumer:   reader,
+		grpcClient: grpcClient,
 	}
 
 	for _, e := range c.errors {
@@ -102,16 +103,10 @@ func (c *checker) processMessage(m broker.Message) *result.Result {
 
 // sendResult sends given results via gRPC.
 func (c *checker) sendResult(r *result.Result) error {
-	conn, err := grpc.Dial(c.config.GRPCConfig.ResultCollectorAddress, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
-	if err != nil {
-		return fmt.Errorf("Cannot connect to gRPC server: %w\n", err)
-	}
-	defer conn.Close()
-	client := result.NewCheckerClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	_, err = client.SendResult(ctx, &result.ResultRequest{ResultData: r})
+	_, err := c.grpcClient.SendResult(ctx, &result.ResultRequest{ResultData: r})
 	if err != nil {
 		return fmt.Errorf("Error sending result %v\n", err)
 	}
@@ -157,8 +152,9 @@ func (c *checker) ErrorBasedCheck(link string) ([]string, error) {
 	}()
 
 	wg.Wait()
+	close(res)
 
-	fmt.Println("Finished!")
+	fmt.Printf("Finished with url: %v !\n", link)
 	return results, nil
 }
 
@@ -175,7 +171,7 @@ func (c *checker) countErrs(bytes []byte) int {
 
 //fetchForms fetches all forms which existed on a web-page by given link.
 func (c *checker) fetchForms(link string) ([]form.HtmlForm, int, error) {
-	resp, err := c.client.R().Get(link)
+	resp, err := c.httpClient.R().Get(link)
 	if err != nil {
 		return nil, 0, fmt.Errorf("error fetching url %q: %w", link, err)
 	}
@@ -200,7 +196,7 @@ func (c *checker) submitForm(link, payload string, countBefore int, forms []form
 		formValues := copyMap(f.Values)
 		setValues(formValues, payload)
 
-		resp, err := c.client.R().
+		resp, err := c.httpClient.R().
 			SetFormData(formValues).
 			Post(f.URL)
 		if err != nil {
@@ -221,7 +217,7 @@ func (c *checker) submitForm(link, payload string, countBefore int, forms []form
 
 // authLocal is the authentication in case we have bWAPP-site started locally.
 func (c *checker) authLocal() {
-	_, err := c.client.R().
+	_, err := c.httpClient.R().
 		SetFormData(map[string]string{
 			"login":    "admin",
 			"password": "12345",
