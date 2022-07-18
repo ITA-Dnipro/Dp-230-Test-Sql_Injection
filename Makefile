@@ -29,6 +29,6 @@ test-coverage-visualize:
 
 lint:
 	@echo lint
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.46.2
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	@$(GOBIN)/golangci-lint run
 

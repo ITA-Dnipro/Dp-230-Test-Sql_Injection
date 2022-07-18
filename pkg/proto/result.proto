@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "/internal/result";
+
+message Result {
+  string taskID = 1;
+  repeated string result = 2;
+}
+
+message ResultRequest {
+  Result resultData = 1;
+}
+
+message ResultResponse {
+  string response = 1;
+}
+
+service Checker {
+  rpc SendResult(ResultRequest) returns (ResultResponse);
+}
